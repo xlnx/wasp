@@ -1,0 +1,29 @@
+{
+  "name": "wasp",
+  "version": "1.0.0",
+  "description": "wasp webgl framework",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron ."
+  },
+  "keywords": [
+    "webgl",
+    "framework"
+  ],
+  "author": "KoishiChan",
+  "license": "ISC",
+  "devDependencies": {
+    "awesome-typescript-loader": "^5.2.0",
+    "copy-webpack-plugin": "^4.5.2",
+    "electron": "^2.0.4",
+    "source-map-loader": "^0.2.3",
+    "typescript": "^2.9.2",
+    "webpack": "^4.15.1",
+    "webpack-cli": "^3.0.8",
+    "@types/three": "^0.92.12",
+    "three": "^0.94.0"
+  },
+  "dependencies": {
+  }
+}
