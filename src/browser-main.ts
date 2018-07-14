@@ -19,8 +19,21 @@ orbit.enableZoom = true;
 
 let group = new THREE.Group();
 
-let geometry = new THREE.ConeGeometry(1, 1, 6, 0);
-//new THREE.BoxGeometry(1, 1, 1);
+let geometry = 
+// new THREE.TubeGeometry()
+// new THREE.TorusGeometry(1);
+new THREE.SphereGeometry(1);
+// new THREE.RingGeometry(.5, 1);
+// new THREE.PolyhedronGeometry()
+// new THREE.PlaneGeometry(1, 1, 4, 4);
+// new THREE.ParametricGeometry()
+// new THREE.OctahedronGeometry(1);
+// new THREE.LatheGeometry();
+// new THREE.ExtrudeGeometry()
+// new THREE.DodecahedronGeometry(1);
+// new THREE.CylinderGeometry(.5, 1, 1, 6, 0);
+// new THREE.ConeGeometry(1, 1, 6, 0);
+// new THREE.BoxGeometry(1, 1, 1);
 
 let lineMaterial = new THREE.LineBasicMaterial({
 	color: 0xffffff, 
@@ -32,11 +45,11 @@ let meshMaterial = new THREE.MeshPhongMaterial({
 	color: 0x156289,
 	emissive: 0x072534,
 	side: THREE.DoubleSide,
-	flatShading: true
+	flatShading: true		// hard edges
 });
 
 group.add(new THREE.Mesh(geometry, meshMaterial));
-group.add(new THREE.LineSegments(geometry, lineMaterial));
+group.add(new THREE.LineSegments(new THREE.WireframeGeometry(geometry), lineMaterial));
 
 let light = new THREE.PointLight(0xffffff, 1, 0);
 light.position.set(0, 2, .5);

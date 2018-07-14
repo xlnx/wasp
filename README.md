@@ -1,5 +1,6 @@
 # wasp
 
-wasp is a basic webgl framework.
+wasp is a webgl framework based on **three.js**.
+used for practice and quick rendering / demoing.
 
-the old repository is located at [here](https://github.com/xlnx/bee)
+previous webgl2.0 framework is located [here](https://github.com/xlnx/bee)
