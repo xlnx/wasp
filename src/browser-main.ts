@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { Wasp } from "./wasp";
 import * as threeOrbitControls from "three-orbit-controls";
 const OrbitControls = threeOrbitControls(THREE);
 
@@ -14,59 +15,174 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 1);
 document.body.appendChild(renderer.domElement);
 
-let orbit = new OrbitControls(camera, renderer.domElement);
-orbit.enableZoom = true;
+// let pass = new Wasp.PostPass(require("./shaders/test.frag"));
+let img = new Wasp.PostImagePass();
+// let uv = new Wasp.PostUVPass();
+// let blur = new Wasp.PostUniformBlurPass();
 
-let group = new THREE.Group();
-
-let geometry = 
-// new THREE.TubeGeometry()
-// new THREE.TorusGeometry(1);
-new THREE.SphereGeometry(1);
-// new THREE.RingGeometry(.5, 1);
-// new THREE.PolyhedronGeometry()
-// new THREE.PlaneGeometry(1, 1, 4, 4);
-// new THREE.ParametricGeometry()
-// new THREE.OctahedronGeometry(1);
-// new THREE.LatheGeometry();
-// new THREE.ExtrudeGeometry()
-// new THREE.DodecahedronGeometry(1);
-// new THREE.CylinderGeometry(.5, 1, 1, 6, 0);
-// new THREE.ConeGeometry(1, 1, 6, 0);
-// new THREE.BoxGeometry(1, 1, 1);
-
-let lineMaterial = new THREE.LineBasicMaterial({
-	color: 0xffffff, 
-	transparent: true,
-	opacity: 0.5,
-	linewidth: 10
+let fftBuffer = new THREE.WebGLRenderTarget(256, 256, {
+	wrapS: THREE.RepeatWrapping,
+	wrapT: THREE.RepeatWrapping,
+	magFilter: THREE.NearestFilter,
+	minFilter: THREE.NearestFilter,
+	type: THREE.FloatType,
+	depthBuffer: false,
+	stencilBuffer: false
 });
-let meshMaterial = new THREE.MeshPhongMaterial({
-	color: 0x156289,
-	emissive: 0x072534,
-	side: THREE.DoubleSide,
-	flatShading: true		// hard edges
+let phillipsTarget = fftBuffer.clone();
+new Wasp.PostPass(require("./shaders/phillips.frag")).
+	render({}, renderer, phillipsTarget);
+
+let gaussianTarget = fftBuffer.clone();
+new Wasp.PostPass(require("./shaders/gaussian.frag")).
+	render({}, renderer, gaussianTarget);
+
+let fftHTarget = [fftBuffer.clone(), fftBuffer.clone()];
+let fftDxyTarget = [fftBuffer.clone(), fftBuffer.clone()];
+new Wasp.PostPass({
+	uniforms: {
+		spectrum: { type: 't' },
+		gaussian: { type: 't' }
+	},
+	fragmentShader: require("./shaders/fftsrcH.frag")
+}).
+	render({
+		spectrum: phillipsTarget.texture,
+		gaussian: gaussianTarget.texture
+	}, renderer, fftHTarget[0]);
+
+new Wasp.PostPass({
+	uniforms: {
+		H: { type: 't' }
+	},
+	fragmentShader: require("./shaders/fftsrcDxy.frag")
+}).
+	render({
+		H: fftHTarget[0].texture
+	}, renderer, fftDxyTarget[0]);
+
+swapfftTargets();
+
+let fftvr = new Wasp.PostPass({
+	defines: {
+		N: 256
+	},
+	uniforms: {
+		prev: { type: 't' }
+	},
+	fragmentShader: require("./shaders/fftvr.frag")
 });
+fftvr.render({
+		prev: fftHTarget[1].texture
+	}, renderer, fftHTarget[0]);
+fftvr.render({
+		prev: fftDxyTarget[1].texture
+	}, renderer, fftDxyTarget[0]);
 
-group.add(new THREE.Mesh(geometry, meshMaterial));
-group.add(new THREE.LineSegments(new THREE.WireframeGeometry(geometry), lineMaterial));
+swapfftTargets();
 
-let light = new THREE.PointLight(0xffffff, 1, 0);
-light.position.set(0, 2, .5);
-group.add(light);
+let fftv = new Wasp.PostPass({
+	defines: {
+		N: 256
+	},
+	uniforms: {
+		prev: { type: 't' },
+		unit: { type: 'f' }
+	},
+	fragmentShader: require("./shaders/fftv.frag")
+});
+for (let i = 1; i != 256; i *= 2) {
+	fftv.render({
+			prev: fftHTarget[1].texture,
+			unit: i
+		}, renderer, fftHTarget[0]);
+	fftv.render({
+			prev: fftDxyTarget[1].texture,
+			unit: i
+		}, renderer, fftDxyTarget[0]);
+	swapfftTargets();
+}
 
-let lightHelper = new THREE.PointLightHelper(light, 0.1);
-scene.add(lightHelper);
+let ffthr = new Wasp.PostPass({
+	defines: {
+		N: 256
+	},
+	uniforms: {
+		prev: { type: 't' }
+	},
+	fragmentShader: require("./shaders/ffthr.frag")
+});
+ffthr.render({
+		prev: fftHTarget[1].texture
+	}, renderer, fftHTarget[0]);
+ffthr.render({
+		prev: fftDxyTarget[1].texture
+	}, renderer, fftDxyTarget[0]);
 
-scene.add(group);
+swapfftTargets();
+
+let ffth = new Wasp.PostPass({
+	defines: {
+		N: 256
+	},
+	uniforms: {
+		prev: { type: 't' },
+		unit: { type: 'f' }
+	},
+	fragmentShader: require("./shaders/ffth.frag")
+});
+for (let i = 1; i != 256; i *= 2) {
+	ffth.render({
+			prev: fftHTarget[1].texture,
+			unit: i
+		}, renderer, fftHTarget[0]);
+	ffth.render({
+			prev: fftDxyTarget[1].texture,
+			unit: i
+		}, renderer, fftDxyTarget[0]);
+	swapfftTargets();
+}
+
+let displacementTarget = new THREE.WebGLRenderTarget(256, 256, {
+	wrapS: THREE.RepeatWrapping,
+	wrapT: THREE.RepeatWrapping,
+	magFilter: THREE.LinearFilter,
+	minFilter: THREE.LinearFilter,
+	type: THREE.FloatType,
+	depthBuffer: false,
+	stencilBuffer: false
+});
+new Wasp.PostPass({
+	defines: {
+		N: 256
+	},
+	uniforms: {
+		prevH: { type: 't' },
+		prevDxy: { type: 't' }
+	},
+	fragmentShader: require("./shaders/fftend.frag")
+}).
+	render({
+		prevH: fftHTarget[1],
+		prevDxy: fftDxyTarget[1]
+	}, renderer, displacementTarget);
+
+function swapfftTargets() {
+	let fft = fftHTarget[0]; 
+	fftHTarget[0] = fftHTarget[1];
+	fftHTarget[1] = fft;
+	fft = fftDxyTarget[0];
+	fftDxyTarget[0] = fftDxyTarget[1];
+	fftDxyTarget[1] = fft;
+}
 
 function render() {
 	requestAnimationFrame(render);
 
-	// group.rotation.x += 0.005;
-	group.rotation.y += 0.005;
-
-	renderer.render(scene, camera);
+	// uv.render({}, renderer, target);
+	// blur.render({ image: target.texture }, renderer, targ);
+	// img.render({ image: targ.texture }, renderer);
+	img.render({ image: displacementTarget.texture }, renderer);
 };
 
 window.addEventListener('resize', () => {
