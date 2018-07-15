@@ -1,5 +1,6 @@
 uniform sampler2D prevH;
 uniform sampler2D prevDxy;
+uniform int N;
 
 void main()
 {

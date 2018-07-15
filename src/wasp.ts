@@ -17,6 +17,20 @@ function extend(ext: Object | undefined, base: Object) {
 	return res;
 }
 
+export class WebGLGBufferRenderTarget extends THREE.WebGLRenderTarget {
+	constructor(width: number, height: number, pixel: boolean = false) {
+		super(width, height, {
+			wrapS: THREE.RepeatWrapping,
+			wrapT: THREE.RepeatWrapping,
+			magFilter: pixel ? THREE.NearestFilter : THREE.LinearFilter,
+			minFilter: pixel ? THREE.NearestFilter : THREE.LinearFilter,
+			type: THREE.FloatType,
+			depthBuffer: false,
+			stencilBuffer: false
+		});
+	}
+}
+
 // geometries
 class PostGeometry extends THREE.PlaneGeometry {
 	constructor() {
@@ -50,8 +64,7 @@ export class PostPass {
 	}
 
 	render(renderSource: Object, renderer: THREE.WebGLRenderer, 
-		renderTarget?: THREE.WebGLRenderTarget, 
-		forceClear?: boolean) 
+		renderTarget?: THREE.WebGLRenderTarget) 
 	{
 		for (let p in renderSource) {
 			if (renderSource.hasOwnProperty(p) && !PostPass.uniforms.hasOwnProperty(p)) {
@@ -60,7 +73,7 @@ export class PostPass {
 		}
 		let { width, height } = renderTarget ? renderTarget : renderer.getSize();
 		this.shader.uniforms.iResolution.value.set(width, height);
-		renderer.render(this.scene, PostPass.camera, renderTarget, forceClear);
+		renderer.render(this.scene, PostPass.camera, renderTarget);
 	}
 
 	protected static createMaterial(shader: PostPassShaderParameters | string): THREE.ShaderMaterial {
@@ -89,10 +102,10 @@ export class PostUVPass extends PostPass {
 }
 
 export class PostImagePass extends PostPass {
-	constructor(texture?: THREE.Texture) {
+	constructor() {
 		super({
 			uniforms: {
-				image: { type: 't', value: texture }
+				image: { type: 't' }
 			},
 			fragmentShader: `uniform sampler2D image; 
 				void main() { gl_FragColor = texture2D(image, gl_FragCoord.xy/iResolution.xy); }`
@@ -101,13 +114,13 @@ export class PostImagePass extends PostPass {
 }
 
 export class PostUniformBlurPass extends PostPass {
-	constructor(texture?: THREE.Texture) {
+	constructor() {
 		super({
 			defines: {
 				MAX_SAMPLES: "128"
 			},
 			uniforms: {
-				image: { type: 't', value: texture },
+				image: { type: 't' },
 				radius: { type: 'f', value: 10 },
 				samples: { type: 'i', value: 10 }
 			},
@@ -127,20 +140,13 @@ export class PostUniformBlurPass extends PostPass {
 				}`
 		});
 	}
-
-	// render(renderer: THREE.WebGLRenderer, 
-	// 	renderTarget?: THREE.WebGLRenderTarget, 
-	// 	forceClear?: boolean)
-	// {
-	// 	renderer.render()
-	// }
 }
 
 export class PostGaussianBlurPass extends PostPass {
-	constructor(texture?: THREE.Texture) {
+	constructor() {
 		super({
 			uniforms: {
-				image: { type: 't', value: texture }
+				image: { type: 't' }
 			},
 			fragmentShader: `uniform sampler2D image;
 				void main() { 
@@ -148,6 +154,142 @@ export class PostGaussianBlurPass extends PostPass {
 				}`
 		});
 	}
+}
+
+export class PostFFTWavePass extends Wasp.PostImagePass {
+	private static phillips = new Wasp.PostPass(require("./shaders/phillips.frag"));
+	private static gaussian = new Wasp.PostPass(require("./shaders/gaussian.frag"));
+	
+	private phillipsTarget: Wasp.WebGLGBufferRenderTarget;
+	private gaussianTarget: Wasp.WebGLGBufferRenderTarget;
+	
+	private fftHTarget: Wasp.WebGLGBufferRenderTarget[];
+	private fftDxyTarget: Wasp.WebGLGBufferRenderTarget[];
+	private displacementTarget: Wasp.WebGLGBufferRenderTarget;
+			
+	private fftsrcH = new Wasp.PostPass({
+		uniforms: { spectrum: { type: 't' }, gaussian: { type: 't' } },
+		fragmentShader: require("./shaders/fftsrcH.frag")
+	});
+	private fftsrcDxy = new Wasp.PostPass({
+		uniforms: { H: { type: 't' } },
+		fragmentShader: require("./shaders/fftsrcDxy.frag")
+	});
+	private fftvr = new Wasp.PostPass({
+		uniforms: { prev: { type: 't' }, N: { type: 'i', value: this.width } },
+		fragmentShader: require("./shaders/fftvr.frag")
+	});
+	private fftv = new Wasp.PostPass({
+		uniforms: { prev: { type: 't' }, unit: { type: 'f' }, N: { type: 'i', value: this.width } },
+		fragmentShader: require("./shaders/fftv.frag")
+	});
+	private ffthr = new Wasp.PostPass({
+		uniforms: { prev: { type: 't' }, N: { type: 'i', value: this.width } },
+		fragmentShader: require("./shaders/ffthr.frag")
+	});
+	private ffth = new Wasp.PostPass({
+		uniforms: { prev: { type: 't' }, unit: { type: 'f' }, N: { type: 'i', value: this.width } },
+		fragmentShader: require("./shaders/ffth.frag")
+	});
+	private fftend = new Wasp.PostPass({
+		uniforms: { prevH: { type: 't' }, prevDxy: { type: 't' }, N: { type: 'i', value: this.width } },
+		fragmentShader: require("./shaders/fftend.frag")
+	});
+	
+	private needUpdate: boolean = true;
+	
+	constructor(private width: number) {
+		super();
+
+		if ((1 << Math.log2(width)) != width) {
+			throw ("FFT only works on 2^k size.");
+		}
+		
+		let t0 = new Wasp.WebGLGBufferRenderTarget(width, width, true);
+		this.phillipsTarget = t0;
+		this.gaussianTarget = t0.clone();
+		this.displacementTarget = new Wasp.WebGLGBufferRenderTarget(width, width);
+
+		this.fftHTarget = [t0.clone(), t0.clone()];
+		this.fftDxyTarget = [t0.clone(), t0.clone()];
+	}
+
+	set size(width: number) {
+		if ((1 << Math.log2(width)) != width) {
+			console.warn("FFT only works on 2^k size.");
+		} else {
+			this.phillipsTarget.width = this.phillipsTarget.height = width;
+			this.gaussianTarget.width = this.gaussianTarget.height = width;
+
+			this.fftHTarget[0].width = this.fftHTarget[0].height = width;
+			this.fftHTarget[1].width = this.fftHTarget[1].height = width;
+			this.fftDxyTarget[0].width = this.fftDxyTarget[0].height = width;
+			this.fftDxyTarget[1].width = this.fftDxyTarget[1].height = width;
+			this.displacementTarget.width = this.displacementTarget.height = width;
+
+			this.needUpdate = true;			
+			this.width = width;
+		}
+	}
+
+	private swapfftTargets() {
+		let fft = this.fftHTarget[0]; 
+		this.fftHTarget[0] = this.fftHTarget[1];
+		this.fftHTarget[1] = fft;
+		fft = this.fftDxyTarget[0];
+		this.fftDxyTarget[0] = this.fftDxyTarget[1];
+		this.fftDxyTarget[1] = fft;
+	}
+
+	render(renderSource: Object, renderer: THREE.WebGLRenderer, 
+		renderTarget?: THREE.WebGLRenderTarget) {
+		if (this.needUpdate) {
+			PostFFTWavePass.phillips.render({}, renderer, this.phillipsTarget);
+			PostFFTWavePass.gaussian.render({}, renderer, this.gaussianTarget);
+		}
+
+		this.fftsrcH.render({ spectrum: this.phillipsTarget.texture, gaussian: this.gaussianTarget.texture }, renderer, this.fftHTarget[1]);
+		this.fftsrcDxy.render({ H: this.fftHTarget[1].texture }, renderer, this.fftDxyTarget[1]);
+
+		this.fftvr.render({ prev: this.fftHTarget[1].texture }, renderer, this.fftHTarget[0]);
+		this.fftvr.render({ prev: this.fftDxyTarget[1].texture }, renderer, this.fftDxyTarget[0]);
+		this.swapfftTargets();
+
+		for (let i = 1; i != this.width; i *= 2) {
+			this.fftv.render({ prev: this.fftHTarget[1].texture, unit: i }, renderer, this.fftHTarget[0]);
+			this.fftv.render({ prev: this.fftDxyTarget[1].texture, unit: i }, renderer, this.fftDxyTarget[0]);
+			this.swapfftTargets();
+		}
+
+		this.ffthr.render({ prev: this.fftHTarget[1].texture }, renderer, this.fftHTarget[0]);
+		this.ffthr.render({ prev: this.fftDxyTarget[1].texture }, renderer, this.fftDxyTarget[0]);
+		this.swapfftTargets();
+
+		for (let i = 1; i != this.width; i *= 2) {
+			this.ffth.render({ prev: this.fftHTarget[1].texture, unit: i }, renderer, this.fftHTarget[0]);
+			this.ffth.render({ prev: this.fftDxyTarget[1].texture, unit: i }, renderer, this.fftDxyTarget[0]);
+			this.swapfftTargets();
+		}
+
+		this.fftend.render({ prevH: this.fftHTarget[1].texture, prevDxy: this.fftDxyTarget[1].texture }, renderer, this.displacementTarget);
+		super.render(extend({ image: this.displacementTarget.texture }, renderSource), renderer, renderTarget);
+	}
+}
+
+export function quickRender(render: (renderer: THREE.WebGLRenderer) => void, params?: THREE.WebGLRendererParameters) {
+	let renderer = new THREE.WebGLRenderer(params);
+	renderer.setPixelRatio(window.devicePixelRatio);
+	renderer.setSize(window.innerWidth, window.innerHeight);
+	renderer.setClearColor(0x000000, 1);
+	document.body.appendChild(renderer.domElement);
+	const fn = () => {
+		requestAnimationFrame(fn);
+		render(renderer);
+	};
+	window.addEventListener('resize', () => {
+		renderer.setSize(window.innerWidth, window.innerHeight);
+	});
+	fn();
 }
 
 }

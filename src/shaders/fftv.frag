@@ -2,6 +2,7 @@
 
 uniform sampler2D prev;
 uniform float unit;
+uniform int N;
 
 vec2 complexMul(vec2 a, vec2 b)
 {
