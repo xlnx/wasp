@@ -1,26 +1,37 @@
 import * as THREE from "three";
 import { Wasp } from "./wasp";
-import * as threeOrbitControls from "three-orbit-controls";
-const OrbitControls = threeOrbitControls(THREE);
 
-let scene = new THREE.Scene();
-let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-camera.position.z = 4;
-
-let img = new Wasp.PostImagePass();
-let blur = new Wasp.PostUniformBlurPass();
 let wave = new Wasp.PostFFTWavePass(256);
-
 let g = new Wasp.WebGLGBufferRenderTarget(256, 256);
 
-window.addEventListener('resize', () => {
-	camera.aspect = window.innerWidth / window.innerHeight;
-	camera.updateProjectionMatrix();
-});
-
-Wasp.quickRender((renderer: THREE.WebGLRenderer) => {
+Wasp.quickSceneRender((renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
 	wave.render({}, renderer, g);
-	blur.render({ image: g.texture }, renderer);
+	renderer.render(scene, camera);
 }, {
 	antialias: true
+}, (renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
+	let orbit = new THREE.OrbitControls(camera, renderer.domElement);
+	orbit.enableZoom = true;
+
+	let geometry = new THREE.PlaneGeometry(5, 5, 40, 40);
+	let meshMaterial = new THREE.MeshStandardMaterial({
+		color: 0x156289,
+		emissive: 0x072534,
+		side: THREE.DoubleSide,
+		displacementMap: g.texture,
+		displacementScale: 1e-4,
+		flatShading: true		// hard edges
+	});
+	let plain = new THREE.Mesh(geometry, meshMaterial);
+	scene.add(plain);
+	// plain.rotateX(Math.PI/2);
+	plain.rotateX(2*Math.PI/3);
+	
+	let light = new THREE.PointLight(0xffffff, 1, 0);
+	light.position.set(0, 2, .5);
+	scene.add(light);
+	
+	let lightHelper = new THREE.PointLightHelper(light, 0.1);
+	scene.add(lightHelper);
 });
+

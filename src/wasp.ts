@@ -1,6 +1,9 @@
 import * as THREE from "three";
+import * as threeOrbitControls from "three-orbit-controls";
 
 export module Wasp {
+
+(<any>THREE).OrbitControls = threeOrbitControls(THREE);
 
 function extend(ext: Object | undefined, base: Object) {
 	let res = {};
@@ -156,6 +159,22 @@ export class PostGaussianBlurPass extends PostPass {
 	}
 }
 
+export class PostScalePass extends PostPass {
+	constructor() {
+		super({
+			uniforms: {
+				image: { type: 't' },
+				c: { type: 'f' }
+			},
+			fragmentShader: `uniform sampler2D image;
+				uniform float c;
+				void main() {
+					gl_FragColor = c*texture2D(image, gl_FragCoord.xy/iResolution.xy);
+				}`
+		});
+	}
+}
+
 export class PostFFTWavePass extends Wasp.PostImagePass {
 	private static phillips = new Wasp.PostPass(require("./shaders/phillips.frag"));
 	private static gaussian = new Wasp.PostPass(require("./shaders/gaussian.frag"));
@@ -276,7 +295,9 @@ export class PostFFTWavePass extends Wasp.PostImagePass {
 	}
 }
 
-export function quickRender(render: (renderer: THREE.WebGLRenderer) => void, params?: THREE.WebGLRendererParameters) {
+export function quickRender(render: (renderer: THREE.WebGLRenderer) => void, 
+		params?: THREE.WebGLRendererParameters, 
+		callback?: (renderer: THREE.WebGLRenderer) => void) {
 	let renderer = new THREE.WebGLRenderer(params);
 	renderer.setPixelRatio(window.devicePixelRatio);
 	renderer.setSize(window.innerWidth, window.innerHeight);
@@ -289,7 +310,25 @@ export function quickRender(render: (renderer: THREE.WebGLRenderer) => void, par
 	window.addEventListener('resize', () => {
 		renderer.setSize(window.innerWidth, window.innerHeight);
 	});
+	!callback || callback(renderer);
 	fn();
+}
+
+export function quickSceneRender(render: (renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => void,
+		params?: THREE.WebGLRendererParameters, 
+		callback?: (renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => void) {
+	let scene = new THREE.Scene();
+	let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+	camera.position.z = 4;
+	quickRender((renderer: THREE.WebGLRenderer) => {
+		render(renderer, scene, camera);
+	}, params, (renderer: THREE.WebGLRenderer) => {
+		window.addEventListener('resize', () => {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+		});
+		callback(renderer, scene, camera);
+	});
 }
 
 }
