@@ -1,8 +1,19 @@
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const path = require('path')
+const fs = require("fs")
+
+let entries = {}
+let files = fs.readdirSync(__dirname + "/examples")
+files.forEach((file) => {
+	if (fs.lstatSync(__dirname + "/examples/" + file).isDirectory()) {
+		entries[file] = [
+			__dirname, "examples", file, file + ".ts"
+		].join("/")
+	}
+})
 
 module.exports = {
-	entry: "./src/browser-main.ts",
+	entry: entries,
 	resolve: {
 		extensions: [".ts", ".tsx", ".js", ".json"]
 	},
@@ -16,15 +27,18 @@ module.exports = {
 	},
 	mode: "development",
 	output: {
-			path: path.resolve(__dirname, 'build/dist'),
-			filename: 'bundle.js'
+		path: path.resolve(__dirname, 'build/'),
+		filename: '[name]/dist/bundle.js'
 	},
 	plugins: [
 		new CopyWebpackPlugin([
 			{
-				from: "./src/index.html",
-				to: "../index.html"
+				from: "./**/index.html",
+				to: "./",
+				toType: "dir"
 			}
-		])
+		], {
+			context: "./examples"
+		})
 	]
 }

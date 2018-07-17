@@ -8,6 +8,11 @@ const url = require('url')
 
 let mainWindow
 
+if (process.argv.length <= 2) {
+  console.log("no test target specified.")
+  process.exit(0)
+}
+
 function createWindow () {
   // app.commandLine.appendSwitch('--disable-gpu-vsync')
   app.commandLine.appendSwitch('--use-gl=desktop')
@@ -25,7 +30,7 @@ function createWindow () {
   })
   // mainWindow.webContents.openDevTools()
   mainWindow.loadURL(url.format({
-    pathname: path.join(__dirname, 'build/index.html'),
+    pathname: path.join(__dirname, 'build/' + process.argv[2] + '/index.html'),
     protocol: 'file:',
     slashes: true
   }))
