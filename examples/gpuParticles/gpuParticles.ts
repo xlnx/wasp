@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { Wasp } from "../../src/wasp";
+import * as Wasp from "../../src/wasp";
 
 let img = new Wasp.PostImagePass();
-let p = new Wasp.ParticleSystem(new THREE.BoxBufferGeometry(1, 1, 1, 30, 30, 30), {
+let p = new Wasp.GPUParticleSystem(new THREE.BoxBufferGeometry(1, 1, 1, 50, 50, 50), {
 	attributes: {
 		pos: `
 			vec4 update()

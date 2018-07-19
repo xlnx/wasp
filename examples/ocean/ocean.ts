@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { Wasp } from "../../src/wasp";
+import * as Wasp from "../../src/wasp";
+// import * as Wasp from "../../src/";
 
 let wave = new Wasp.PostFFTWavePass(256);
 let g = new Wasp.RenderTarget(256, 256);
