@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { Wasp } from "../../src/wasp";
 
 let wave = new Wasp.PostFFTWavePass(256);
-let g = new Wasp.WebGLGBufferRenderTarget(256, 256);
+let g = new Wasp.RenderTarget(256, 256);
 
 Wasp.quickSceneRender((renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
 	wave.render({}, renderer, g);
