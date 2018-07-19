@@ -2,7 +2,7 @@ import * as THREE from "three";
 import * as Wasp from "../../src/wasp";
 
 let img = new Wasp.PostImagePass();
-let p = new Wasp.GPUParticleSystem(new THREE.BoxBufferGeometry(1, 1, 1, 50, 50, 50), {
+let p = new Wasp.GPUParticleSystem(new THREE.BoxBufferGeometry(1, 1, 1, 50, 50, 50), new Wasp.GPUParticleMaterial({
 	attributes: {
 		pos: `
 			vec4 update()
@@ -37,7 +37,7 @@ let p = new Wasp.GPUParticleSystem(new THREE.BoxBufferGeometry(1, 1, 1, 50, 50, 
 			gl_FragColor = color;
 		}
 	`
-});
+}));
 let targ = new Wasp.RenderTarget(window.innerWidth, window.innerHeight);
 
 Wasp.quickSceneRender((renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) => {
