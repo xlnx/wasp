@@ -19,16 +19,29 @@ export class GPUParticleMaterial extends THREE.ShaderMaterial {
 	}
 
 	private static computeAttributes(parameters?: GPUParticleMaterialParameters) {
-		return extend(
+		let attrs = extend(
 			{ 
-			lifetime: `
-				vec4 update()
-				{ return vec4(lifetime.x + delta, 0, 0, 0); }
-				vec4 init()
-				{ return vec4(0.); }\n`
+			lifetime: {
+				components: 1,
+				update: `return lifetime + delta;`,
+				init: `return 0.;`
+			}
 			}, 
 			parameters.attributes
 		);
+		let res = [];
+		let attrsVec = [];
+		for (let attribute in attrs) {
+			if (attrs[attribute].components == 4) {
+				res.push({ attribute: attrs[attribute] })
+			} else {
+				attrsVec.push(extend({ name: attribute }, attrs[attribute]));
+			}
+		}
+		attrsVec = attrsVec.sort((a, b)=>a.components-b.components);
+		while (attrsVec.length) {
+			let big = 
+		}
 	}
 	
 	private static computeParameters(parameters?: GPUParticleMaterialParameters): THREE.ShaderMaterialParameters {
