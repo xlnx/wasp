@@ -6,12 +6,16 @@ import { extend, substract } from "./util";
 
 export interface GPUParticleMaterialParameters extends THREE.ShaderMaterialParameters {
 	attributes?: {
-		[key: string]: string
+		[key: string]: {
+			components: number,
+			update: string,
+			init: string
+		}
 	}
 }
 
 export class GPUParticleMaterial extends THREE.ShaderMaterial {
-	attributes: { [key: string]: any } = {};
+	groups: any[] = [];
 
 	constructor(parameters?: GPUParticleMaterialParameters) {
 		super(GPUParticleMaterial.computeParameters(parameters));
@@ -30,18 +34,40 @@ export class GPUParticleMaterial extends THREE.ShaderMaterial {
 			parameters.attributes
 		);
 		let res = [];
-		let attrsVec = [];
+		let attrsVec = [null, [], [], []];
 		for (let attribute in attrs) {
-			if (attrs[attribute].components == 4) {
-				res.push({ attribute: attrs[attribute] })
-			} else {
-				attrsVec.push(extend({ name: attribute }, attrs[attribute]));
+			switch (attrs[attribute].components) {
+			case 4: res.push([ extend({ name: attribute }, attrs[attribute]) ]); break;
+			case 1: case 2: case 3: attrsVec[attrs[attribute].components].push(extend({ name: attribute }, attrs[attribute])); break;
+			default: throw "invalid components, should be [1,2,3,4].";
 			}
 		}
-		attrsVec = attrsVec.sort((a, b)=>a.components-b.components);
-		while (attrsVec.length) {
-			let big = 
+		while (attrsVec[3].length) {
+			if (attrsVec[1].length) {
+				res.push([ attrsVec[3].pop(), attrsVec[1].pop() ]);
+			} else {
+				res.push([ attrsVec[3].pop() ]);
+			}
 		}
+		while (attrsVec[2].length > 1) {
+			res.push([ attrsVec[2].pop(), attrsVec[2].pop() ]);
+		}
+		if (attrsVec[2].length) {
+			switch (attrsVec[1].length) {
+			case 0: res.push([ attrsVec[2].pop() ]); break;
+			case 1: res.push([ attrsVec[2].pop(), attrsVec[1].pop() ]); break;
+			default: res.push([ attrsVec[2].pop(), attrsVec[1].pop(), attrsVec[1].pop() ]); break;
+			}
+		}
+		while (attrsVec[1].length) {
+			let e = [];
+			for (let i = 0; i != 4; ++i) {
+				if (!attrsVec[1].length) break;
+				e.push(attrsVec[1].pop());
+			}
+			res.push(e);
+		}
+		return res;
 	}
 	
 	private static computeParameters(parameters?: GPUParticleMaterialParameters): THREE.ShaderMaterialParameters {
@@ -55,26 +81,33 @@ export class GPUParticleMaterial extends THREE.ShaderMaterial {
 			attribute float vertex_id;
 			void main()
 			{
-				vec2 uv = vec2(mod(vertex_id, 1024.)/1024., vertex_id/1024./nlines);
-				vec4 wpos = modelMatrix * vec4(position, 1);
-				wpos += vec4(texture2D(pos_map, uv).xyz, 0);
-				gl_Position = projectionMatrix * viewMatrix * wpos;
-			`;
+				vec2 uv = vec2(mod(vertex_id, 1024.)/1024., vertex_id/1024./nlines);`;
 		let ff = "\nvoid main() { vec2 uv = gl_FragCoord.xy/vec2(1024, nlines); "
-		for (let attribute in attrs) {
-			header += "uniform sampler2D " + attribute + "_map; vec4 " + attribute + ";\n";
-			uniforms[attribute + "_map"] = { type: 'i' };
-			fv += "\n" + attribute + " = texture2D(" + attribute + "_map, uv);";
-			ff += "\n" + attribute + " = texture2D(" + attribute + "_map, uv);";
+		for (let group in attrs) {
+			for (let attr of attrs[group]) {
+				header += [null,"float","vec2","vec3","vec4"][attr.components] + " " + attr.name + ";";
+			}
+			header += "uniform sampler2D attr" + group + "_map_impl_;\n";
+			uniforms["attr" + group + "_map_impl_"] = { type: 'i' };
+			let getter = "\nvec4 attr" + group + "_val = texture2D(attr" + group + "_map_impl_, uv);";
+			let curr = 0;
+			for (let attr of attrs[group]) {
+				let comps = "xyzw".substr(curr, attr.components); curr += attr.components;
+				getter += attr.name + " = attr" + group + "_val." + comps + ";";
+			}
+			fv += getter; ff += getter;
 		}
 		params.uniforms = extend(uniforms, params.uniforms);
-		if (!params.vertexShader) params.vertexShader = "\nvoid mainParticles() { gl_PointSize = 100.; }\n";
-		if (!params.fragmentShader) params.fragmentShader = "\nvoid mainParticles() { gl_FragColor = vec4(1,0,0,1); }\n";
-		params.vertexShader = header + params.vertexShader + fv + `
-				mainParticles();
+		if (!params.vertexShader) params.vertexShader = "\nvoid main() { gl_PointSize = 100.; }\n";
+		if (!params.fragmentShader) params.fragmentShader = "\nvoid main() { gl_FragColor = vec4(1,0,0,1); }\n";
+		params.vertexShader = header + "\n#define main main_particles_impl_\n" + params.vertexShader + "\n#undef main\n" + fv + `
+				vec4 wpos = modelMatrix * vec4(position, 1);
+				wpos += vec4(pos.xyz, 0);
+				gl_Position = projectionMatrix * viewMatrix * wpos;
+				main_particles_impl_();
 			}`;
-		params.fragmentShader = header + params.fragmentShader + ff + `
-				mainParticles(); 
+		params.fragmentShader = header + "\n#define main main_particles_impl_\n" + params.fragmentShader + "\n#undef main\n" + ff + `
+				main_particles_impl_(); 
 			}`;
 		return params;
 	}
@@ -91,17 +124,37 @@ export class GPUParticleMaterial extends THREE.ShaderMaterial {
 		};
 		let footer = "\nvoid main() { vec2 uv = gl_FragCoord.xy/vec2(1024, nlines);";
 
-		for (let attribute in attrs) {
-			header += "uniform sampler2D " + attribute + "_map; vec4 " + attribute + ";\n";
-			uniforms[attribute + "_map"] = { type: 'i' };
-			footer += "\n" + attribute + " = texture2D(" + attribute + "_map, uv);";
+		let init = [], update = [], funcs = [];
+		for (let group in attrs) {
+			for (let attr of attrs[group]) {
+				header += [null,"float","vec2","vec3","vec4"][attr.components] + " " + attr.name + ";";
+			}
+			header += "uniform sampler2D attr" + group + "_map_impl_;\n";
+			uniforms["attr" + group + "_map_impl_"] = { type: 'i' };
+			footer += "\nvec4 attr" + group + "_val = texture2D(attr" + group + "_map_impl_, uv);";
+			let curr = 0;
+			init[group] = update[group] = "return vec4("; funcs[group] = "\n";
+			for (let attr of attrs[group]) {
+				let comps = "xyzw".substr(curr, attr.components); curr += attr.components;
+				footer += attr.name + " = attr" + group + "_val." + comps + ";";
+				funcs[group] += [null,"float","vec2","vec3","vec4"][attr.components] + " init_impl_" + attr.name + "() {\n" + attr.init + 
+					"\n}\n" + [null,"float","vec2","vec3","vec4"][attr.components] + " update_impl_" + attr.name + "() {\n" + attr.update + "\n}\n";
+				init[group] += "init_impl_" + attr.name + "(),"; update[group] += "update_impl_" + attr.name + "(),";
+			}
+			if (curr == 4) {
+				init[group] = init[group].substr(0, init[group].length - 1) + ");";
+				update[group] = update[group].substr(0, update[group].length - 1) + ");";
+			} else {
+				let c = []; while (curr++ != 4) c.push(0);
+				init[group] += c.join(",") + ");"; update[group] += c.join(",") + ");";
+			}
 		}
-		footer += "\ngl_FragColor = lifetime.x > maxLifetime ? init() : update(); }";
-		for (let attribute in attrs) {
-			this.attributes[attribute] = new PostPass({ 
+		footer += "\ngl_FragColor = lifetime > maxLifetime ? init() : update(); }";
+		for (let group in attrs) {
+			this.groups.push(new PostPass({ 
 				uniforms: uniforms, 
-				fragmentShader: header + attrs[attribute] + footer
-			});
+				fragmentShader: header + funcs[group] + "\nvec4 init() {\n" + init[group] + "\n}\nvec4 update() {\n" + update[group] + "\n}\n" + footer
+			}));
 		}
 	}
 }
@@ -109,12 +162,7 @@ export class GPUParticleMaterial extends THREE.ShaderMaterial {
 export class GPUParticleSystem extends THREE.Points {
 	private clock = new THREE.Clock();
 	private nlines: number;
-	private attributes: {
-		name: string;
-		value: SwappableRenderTarget;
-		update: PostPass
-	} [] = [];
-	private needUpdate: boolean = true;
+	private groups: { value: SwappableRenderTarget; update: PostPass } [] = [];
 
 	public maxLifetime: number = 5;
 
@@ -125,18 +173,11 @@ export class GPUParticleSystem extends THREE.Points {
 		return geo;
 	}
 
-	constructor(geometry: THREE.BufferGeometry, material?: GPUParticleMaterial) {
-		super(GPUParticleSystem.computeGeometry(geometry), material ? material : new GPUParticleMaterial({}));
+	constructor(geometry: THREE.BufferGeometry, material: GPUParticleMaterial) {
+		super(GPUParticleSystem.computeGeometry(geometry), material);
 		this.nlines = Math.ceil(geometry.attributes.position.count/1024);
-		this.buildAttributes(material);
-	}
-	private buildAttributes(material: GPUParticleMaterial) {
-		for (let attribute in material.attributes) {
-			this.attributes.push({
-				name: attribute,
-				value: new SwappableRenderTarget(1024, this.nlines, true),
-				update: material.attributes[attribute]
-			});
+		for (let group of material.groups) {
+			this.groups.push({ value: new SwappableRenderTarget(1024, this.nlines, true), update: group });
 		}
 	}
 	update(renderer: THREE.WebGLRenderer) {
@@ -146,14 +187,14 @@ export class GPUParticleSystem extends THREE.Points {
 			maxLifetime: this.maxLifetime
 		};
 		let mat = (<THREE.ShaderMaterial>this.material);
-		for (let attribute of this.attributes) {
-			source[attribute.name + "_map"] = attribute.value.pending.texture;
-			mat.uniforms[attribute.name + "_map"].value = attribute.value.pending.texture;
+		for (let group in this.groups) {
+			source["attr" + group + "_map_impl_"] = this.groups[group].value.pending.texture;
+			mat.uniforms["attr" + group + "_map_impl_"].value = this.groups[group].value.pending.texture;
 		}
 		// renderer.setClearColor(new THREE.Color("blue"), 1);
-		for (let attribute of this.attributes) {
-			attribute.update.render(source, renderer, attribute.value.current);
-			attribute.value.swap();
+		for (let group of this.groups) {
+			group.update.render(source, renderer, group.value.current);
+			group.value.swap();
 		}
 		// renderer.setClearColor(new THREE.Color("black"), 1);
 		// this.debugImg.render({ image: this.pos.current.texture }, renderer);

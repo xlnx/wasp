@@ -4,37 +4,27 @@ import * as Wasp from "../../src/wasp";
 let img = new Wasp.PostImagePass();
 let p = new Wasp.GPUParticleSystem(new THREE.BoxBufferGeometry(1, 1, 1, 50, 50, 50), new Wasp.GPUParticleMaterial({
 	attributes: {
-		pos: `
-			vec4 update()
-			{
-				return pos + vec4(0, 0.2 * delta, 0, 0);
-			}
-			vec4 init()
-			{
-				return vec4(0, 0, 0, 0);
-			}
-		`,
-		color: `
-			vec4 update()
-			{
-				return color + vec4(.1, .05, -.1, 0.) * delta;
-			}
-			vec4 init()
-			{
-				return vec4(.2, .4, .5, 1.);
-			}
-		`
+		pos: {
+			components: 4,
+			update: "return pos + vec4(0, 0.2 * delta, 0, 0);",
+			init: "return vec4(0, 0, 0, 0);"
+		},
+		color: {
+			components: 3,
+			update: "return color + vec3(.1, .05, -.1) * delta;",
+			init: "return vec3(.2, .4, .5);"
+		}
 	},
 	vertexShader: `
-		void mainParticles()
+		void main()
 		{
 			gl_PointSize = 1.;
 		}
 	`,
 	fragmentShader: `
-		void mainParticles()
+		void main()
 		{
-			gl_FragColor = color;
+			gl_FragColor = vec4(color, 1);
 		}
 	`
 }));
