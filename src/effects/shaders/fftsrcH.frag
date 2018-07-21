@@ -1,6 +1,5 @@
 uniform sampler2D spectrum;
 uniform sampler2D gaussian;
-uniform float time;
 
 const float omega = 2.;
 
@@ -11,15 +10,14 @@ vec2 complexMul(vec2 a, vec2 b)
 
 void main()
 {
-	float t = time;
 	vec2 uv = gl_FragCoord.xy/iResolution.xy*2.-1.;
 	float k = length(uv);
-	float sinv = sin(omega * t);
-	float cosv = cos(omega * t);
+	float sinv = sin(omega * iTime);
+	float cosv = cos(omega * iTime);
 	vec2 tex = uv * .5 + .5;
 	vec2 seed = vec2(1.);
 	vec4 xi = texture2D(gaussian, tex);
-		// vec2(1., 2.) * t * 1e-7;
+		// vec2(1., 2.) * iTime * 1e-7;
 	vec2 h0 = texture2D(spectrum, tex).xy;
 	vec2 H0 = complexMul(h0, xi.xy);
 	vec2 h0_conj = texture2D(spectrum, -tex).xy * vec2(1, -1);

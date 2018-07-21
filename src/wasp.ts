@@ -4,4 +4,5 @@ export * from "./core/postPass";
 export * from "./core/quickEntry";
 
 export * from "./effects/postEffects";
+export * from "./effects/noise";
 

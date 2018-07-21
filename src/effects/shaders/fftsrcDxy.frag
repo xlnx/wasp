@@ -1,9 +1,7 @@
 uniform sampler2D H;
-uniform float time;
 
 void main()
 {
-	float t = time;
 	vec2 uv = gl_FragCoord.xy/iResolution.xy*2.-1.;
 	float k = length(uv);
 	vec2 tex = uv * .5 + .5;

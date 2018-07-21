@@ -1,3 +1,8 @@
+import * as THREE from "three";
+
+let clock = new THREE.Clock();
+clock.start();
+
 export function extend(ext: {[k: string]: any} | undefined, base: {[k: string]: any} | undefined) {
 	let res: {[k: string]: any} = {};
 	if (base == null) {
@@ -29,4 +34,13 @@ export function substract(sub: string[], base: {[k: string]: any} | undefined) {
 		res[p] = base[p];
 	}
 	return res;
+}
+
+export function restartClock() {
+	clock.stop();
+	clock.start();
+}
+
+export function time(): number {
+	return clock.getElapsedTime();
 }

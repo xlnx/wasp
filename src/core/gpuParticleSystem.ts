@@ -1,6 +1,5 @@
 import * as THREE from "three";
-import { RenderTarget, SwappableRenderTarget } from "./renderTarget";
-import { PostImagePass } from "../effects/postEffects";
+import { SwappableRenderTarget } from "./renderTarget";
 import { PostPass } from "./postPass";
 import { extend, substract } from "./util";
 
@@ -191,12 +190,9 @@ export class GPUParticleSystem extends THREE.Points {
 			source["attr" + group + "_map_impl_"] = this.groups[group].value.pending.texture;
 			mat.uniforms["attr" + group + "_map_impl_"].value = this.groups[group].value.pending.texture;
 		}
-		// renderer.setClearColor(new THREE.Color("blue"), 1);
 		for (let group of this.groups) {
 			group.update.render(source, renderer, group.value.current);
 			group.value.swap();
 		}
-		// renderer.setClearColor(new THREE.Color("black"), 1);
-		// this.debugImg.render({ image: this.pos.current.texture }, renderer);
 	}
 }
